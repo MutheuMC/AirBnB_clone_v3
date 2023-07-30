@@ -1,80 +1,88 @@
 #!/usr/bin/python3
 """
-Places_Review file
+This file contains the Review module
 """
-from flask import jsonify, request, abort, make_response
 from api.v1.views import app_views
+from flask import jsonify, abort, request, make_response
 from models import storage
-from models.state import State
-from models.city import City
 from models.place import Place
 from models.review import Review
+from models.user import User
+from flasgger.utils import swag_from
 
 
-@app_views.route('/places/<place_id>/reviews', methods=['GET'],
-                 strict_slashes=False)
-def get_place_reviews(place_id):
-    """ Function that returns a JSON """
-    the_obj = storage.get(Place, place_id)
-    if the_obj is None:
+@app_views.route('/places/<string:place_id>/reviews',
+                 methods=['GET'], strict_slashes=False)
+@swag_from('documentation/reviews/get.yml', methods=['GET'])
+def get_all_reviews(place_id):
+    """ get reviews from a spcific place """
+    place = storage.get(Place, place_id)
+    if place is None:
         abort(404)
-    my_list = []
-    for obj in the_obj.reviews:
-        my_list.append(obj.to_dict())
-    return jsonify(my_list)
+    reviews = [obj.to_dict() for obj in place.reviews]
+    return jsonify(reviews)
 
 
-@app_views.route('/reviews/<review_id>', methods=['GET'], strict_slashes=False)
+@app_views.route('/reviews/<string:review_id>', methods=['GET'],
+                 strict_slashes=False)
+@swag_from('documentation/reviews/get_id.yml', methods=['GET'])
 def get_review(review_id):
-    the_obj = storage.get(Review, review_id)
-    if the_obj is None:
+    """ get review by id"""
+    review = storage.get(Review, review_id)
+    if review is None:
         abort(404)
-    return jsonify(the_obj.to_dict())
+    return jsonify(review.to_dict())
 
 
-@app_views.route('/reviews/<review_id>', methods=['DELETE'],
+@app_views.route('/reviews/<string:review_id>', methods=['DELETE'],
                  strict_slashes=False)
+@swag_from('documentation/reviews/delete.yml', methods=['DELETE'])
 def del_review(review_id):
-    the_obj = storage.get(Review, review_id)
-    if the_obj is None:
+    """ delete review by id"""
+    review = storage.get(Review, review_id)
+    if review is None:
         abort(404)
-    storage.delete(the_obj)
+    review.delete()
     storage.save()
-    return jsonify({}), 200
+    return jsonify({})
 
 
-@app_views.route('/places/<place_id>/reviews', methods=['POST'],
+@app_views.route('/places/<string:place_id>/reviews', methods=['POST'],
                  strict_slashes=False)
-def add_place_review(place_id):
-    try:
-        json_post = request.get_json()
-        the_obj = storage.get(Place, place_id)
-        if the_obj is None:
-            abort(404)
-        if not json_post:
-            return make_response(jsonify({'error': 'Not a JSON'}), 400)
-        if 'user_id' not in json_post:
-            return make_response(jsonify({'error': 'Missing user_id'}), 400)
-        if 'text' not in json_post:
-            return make_response(jsonify({'error': 'Missing text'}), 400)
-        json_post['place_id'] = place_id
-        new = Review(**json_post)
-        new.save()
-        return make_response(jsonify(new.to_dict()), 201)
-    except:
+@swag_from('documentation/reviews/post.yml', methods=['POST'])
+def create_obj_review(place_id):
+    """ create new instance """
+    place = storage.get(Place, place_id)
+    if place is None:
         abort(404)
+    if not request.get_json():
+        return make_response(jsonify({"error": "Not a JSON"}), 400)
+    if 'user_id' not in request.get_json():
+        return make_response(jsonify({"error": "Missing user_id"}), 400)
+    if 'text' not in request.get_json():
+        return make_response(jsonify({"error": "Missing text"}), 400)
+    kwargs = request.get_json()
+    kwargs['place_id'] = place_id
+    user = storage.get(User, kwargs['user_id'])
+    if user is None:
+        abort(404)
+    obj = Review(**kwargs)
+    obj.save()
+    return (jsonify(obj.to_dict()), 201)
 
 
-@app_views.route('/reviews/<review_id>', methods=['PUT'], strict_slashes=False)
-def edit_review(review_id):
-    the_obj = storage.get(Review, review_id)
-    json_put = request.get_json()
-    if the_obj is None:
+@app_views.route('/reviews/<string:review_id>', methods=['PUT'],
+                 strict_slashes=False)
+@swag_from('documentation/reviews/put.yml', methods=['PUT'])
+def post_review(review_id):
+    """ updates by id """
+    if not request.get_json():
+        return make_response(jsonify({"error": "Not a JSON"}), 400)
+    obj = storage.get(Review, review_id)
+    if obj is None:
         abort(404)
-    if not json_put:
-        return make_response(jsonify({'error': 'Not a JSON'}), 400)
-    for key, value in json_put.items():
-        if key not in ['id', 'created_at', 'place_id', 'update_at', 'user_id']:
-            setattr(the_obj, key, value)
+    for key, value in request.get_json().items():
+        if key not in ['id', 'user_id', 'place_id', 'created_at', 'updated']:
+            setattr(obj, key, value)
     storage.save()
-    return make_response(jsonify(the_obj.to_dict()), 200)
+    return jsonify(obj.to_dict())
